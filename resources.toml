@@ -1,0 +1,344 @@
+###############
+# Komodo Demo #
+###############
+
+[[server]]
+name = "demo-server"
+description = "Hosts demo.komo.do"
+tags = ["demo", "komodo"]
+[server.config]
+address = "https://periphery:8120"
+region = "South-1"
+enabled = true
+mem_warning = 85.0
+
+##
+
+[[resource_sync]]
+name = "demo-sync"
+description = "Restores the config back to contents in demo-sync resources.toml"
+tags = ["komodo", "demo"]
+[resource_sync.config]
+git_provider = "git.komo.do"
+repo = "komodo/demo"
+resource_path = "resources.toml"
+delete = true
+
+####################
+# FerretDB (Stack) #
+####################
+
+[[stack]]
+name = "demo-ferretdb"
+tags = ["database", "ferretdb"]
+[stack.config]
+server = "demo-server"
+destroy_before_deploy = true
+file_contents = """
+services:
+
+  postgres:
+    # Recommended: Pin to a specific version
+    # https://github.com/FerretDB/documentdb/pkgs/container/postgres-documentdb
+    image: ghcr.io/ferretdb/postgres-documentdb
+    restart: unless-stopped
+    expose:
+      - 5432
+    volumes:
+      - data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: [[FERRETDB_USERNAME]]
+      POSTGRES_PASSWORD: [[FERRETDB_PASSWORD]]
+      POSTGRES_DB: postgres
+
+  ferretdb:
+    # Recommended: Pin to a specific version
+    # https://github.com/FerretDB/FerretDB/pkgs/container/ferretdb
+    image: ghcr.io/ferretdb/ferretdb
+    restart: unless-stopped
+    depends_on:
+      - postgres
+    # ports:
+    #   - 27017:27017
+    volumes:
+      - state:/state
+    environment:
+      FERRETDB_POSTGRESQL_URL: postgres://[[FERRETDB_USERNAME]]:[[FERRETDB_PASSWORD]]@postgres:5432/postgres
+
+networks:
+  default:
+    name: ferretdb
+
+volumes:
+  data:
+  state:
+"""
+
+##################
+# Immich (Stack) #
+##################
+
+[[stack]]
+name = "demo-immich"
+tags = ["demo", "immich"]
+[stack.config]
+server = "demo-server"
+file_contents = """
+#
+# WARNING: Make sure to use the docker-compose.yml of the current release:
+#
+# https://github.com/immich-app/immich/releases/latest/download/docker-compose.yml
+#
+# The compose file on main may not be compatible with the latest release.
+#
+
+name: immich
+
+services:
+  immich-server:
+    container_name: immich_server
+    image: ghcr.io/immich-app/immich-server:${IMMICH_VERSION:-release}
+    # extends:
+    #   file: hwaccel.transcoding.yml
+    #   service: cpu # set to one of [nvenc, quicksync, rkmpp, vaapi, vaapi-wsl] for accelerated transcoding
+    volumes:
+      # Do not edit the next line. If you want to change the media storage location on your system, edit the value of UPLOAD_LOCATION in the .env file
+      - ${UPLOAD_LOCATION}:/usr/src/app/upload
+      - /etc/localtime:/etc/localtime:ro
+    env_file:
+      - .env
+    ports:
+      - 2283:3001
+    depends_on:
+      - redis
+      - database
+    restart: always
+
+  immich-machine-learning:
+    container_name: immich_machine_learning
+    # For hardware acceleration, add one of -[armnn, cuda, openvino] to the image tag.
+    # Example tag: ${IMMICH_VERSION:-release}-cuda
+    image: ghcr.io/immich-app/immich-machine-learning:${IMMICH_VERSION:-release}
+    # extends: # uncomment this section for hardware acceleration - see https://immich.app/docs/features/ml-hardware-acceleration
+    #   file: hwaccel.ml.yml
+    #   service: cpu # set to one of [armnn, cuda, openvino, openvino-wsl] for accelerated inference - use the `-wsl` version for WSL2 where applicable
+    volumes:
+      - model-cache:/cache
+    env_file:
+      - .env
+    restart: always
+
+  redis:
+    container_name: immich_redis
+    image: docker.io/redis:6.2-alpine@sha256:e3b17ba9479deec4b7d1eeec1548a253acc5374d68d3b27937fcfe4df8d18c7e
+    healthcheck:
+      test: redis-cli ping || exit 1
+    restart: always
+
+  database:
+    container_name: immich_postgres
+    image: docker.io/tensorchord/pgvecto-rs:pg14-v0.2.0@sha256:90724186f0a3517cf6914295b5ab410db9ce23190a2d9d0b9dd6463e3fa298f0
+    environment:
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_DB: ${DB_DATABASE_NAME}
+      POSTGRES_INITDB_ARGS: '--data-checksums'
+    volumes:
+      # Do not edit the next line. If you want to change the database storage location on your system, edit the value of DB_DATA_LOCATION in the .env file
+      - ${DB_DATA_LOCATION}:/var/lib/postgresql/data
+    healthcheck:
+      test: pg_isready --dbname='${DB_DATABASE_NAME}' --username='${DB_USERNAME}' || exit 1; Chksum="$$(psql --dbname='${DB_DATABASE_NAME}' --username='${DB_USERNAME}' --tuples-only --no-align --command='SELECT COALESCE(SUM(checksum_failures), 0) FROM pg_stat_database')"; echo "checksum failure count is $$Chksum"; [ "$$Chksum" = '0' ] || exit 1
+      interval: 5m
+      start_interval: 30s
+      start_period: 5m
+    command: ["postgres", "-c" ,"shared_preload_libraries=vectors.so", "-c", 'search_path="$$user", public, vectors', "-c", "logging_collector=on", "-c", "max_wal_size=2GB", "-c", "shared_buffers=512MB", "-c", "wal_compression=on"]
+    restart: always
+
+volumes:
+  model-cache:
+"""
+environment = """
+	# Supports comments 🦎
+	UPLOAD_LOCATION = /immich/upload
+	DB_DATA_LOCATION = /immich/postgres # And end of line comments.
+	IMMICH_VERSION:  release
+	# And different formats 🦎
+	- DB_PASSWORD: postgres
+	- DB_USERNAME: postgres
+	- DB_DATABASE_NAME: immich
+"""
+
+####################
+# Jellyfin (Stack) #
+####################
+
+[[stack]]
+name = "demo-jellyfin"
+tags = ["demo", "jellyfin"]
+[stack.config]
+server = "demo-server"
+links = [
+  "https://git.komo.do/komodo/demo/src/branch/main/jellyfin.compose.yaml"
+]
+git_provider = "git.komo.do"
+repo = "komodo/demo"
+file_paths = ["jellyfin.compose.yaml"]
+
+############################
+# Jellyfin Deployer (Repo) #
+############################
+
+[[repo]]
+name = "trigger-jellyfin-deploy"
+description = "clone / pull to trigger immich stop, then deploy."
+tags = ["immich", "automation"]
+[repo.config]
+server = "demo-server"
+git_provider = "git.komo.do"
+repo = "komodo/demo"
+on_pull.path = "."
+on_pull.command = """
+API_KEY=[[KOMODO_API_KEY]] API_SECRET=[[KOMODO_API_SECRET]] sh ./trigger-jellyfin-deploy.sh
+"""
+
+###########
+# Logging #
+###########
+
+[[deployment]]
+name = "grafana-ui"
+description = "runs on port 3001"
+tags = ["logging", "ui"]
+deploy = false
+[deployment.config]
+server_id = "demo-server"
+image.type = "Image"
+image.params.image = "grafana/grafana"
+restart = "unless-stopped"
+network = "bridge"
+ports = "3001 = 3000"
+extra_args = ["--add-host=host.docker.internal:host-gateway"] # so it can communicate with tempo at host.docker.internal
+volumes = "grafana-data = /var/lib/grafana"
+labels = "vector = key-value" # So vector picks up the logs, ships to loki
+
+##
+
+[[deployment]]
+name = "loki-logging"
+description = "runs on 3100"
+tags = ["logging"]
+deploy = false
+[deployment.config]
+server_id = "demo-server"
+image.type = "Image"
+image.params.image = "grafana/loki"
+restart = "unless-stopped"
+network = "host"
+volumes = "loki-data = /loki"
+
+##
+
+[[stack]]
+name = "tempo-tracing"
+description = "OTLP: port 4317. HTTP: 3200. GRPC: 9096"
+tags = ["logging"]
+deploy = false
+[stack.config]
+server_id = "demo-server"
+file_paths = ["tempo.compose.yaml"]
+ignore_services = ["init"]
+git_provider = "git.komo.do"
+repo = "komodo/demo"
+
+####################
+# Vector (Logging) #
+####################
+
+# [[stack]]
+# name = "demo-jellyfin"
+# description = "Vector picks up logs from containers and ships them to central location"
+# tags = ["logging"]
+# deploy = false
+# [stack.config]
+# server_id = "demo-server"
+# file_paths = ["compose.yaml"]
+# git_provider = "git.komo.do"
+#
+# repo = "mbecker20/demo-vector"
+
+# [[repo]]
+
+###############
+# Hello world #
+###############
+
+[[deployment]]
+name = "hello_world"
+tags = ["hello", "world"]
+[deployment.config]
+server_id = "demo-server"
+image.type = "Image"
+image.params.image = "hello-world"
+
+##
+
+[[deployment]]
+name = "backblaze-help"
+tags = ["backblaze"]
+[deployment.config]
+server = "demo-server"
+image.type = "Build"
+image.params.build = "backblaze-cli"
+redeploy_on_build = true
+network = "none"
+
+##
+
+[[build]]
+name = "backblaze-cli"
+tags = ["backblaze"]
+[build.config]
+builder = "local"
+version = "4.3.2"
+auto_increment_version = false
+links = [
+  "https://github.com/Backblaze/B2_Command_Line_Tool/releases"
+]
+dockerfile = """
+FROM debian:bookworm-slim
+
+WORKDIR /usr/local/bin
+
+# Version arg is automatically populated by komodo build.
+ARG VERSION
+
+RUN apt-get update && \
+  apt-get install -y \
+  curl \
+  && \
+  rm -rf /var/lib/apt/lists/* && \
+  curl -L --output b2 "https://github.com/Backblaze/B2_Command_Line_Tool/releases/download/v$VERSION/b2-linux" && \
+  chmod +x ./b2
+
+CMD [ "b2", "--help" ]
+"""
+
+##
+
+[[builder]]
+name = "local"
+[builder.config]
+type = "Server"
+params.server_id = "demo-server"
+
+##
+
+[[user_group]]
+name = "Users"
+users = ["demo", "komodo"]
+all.Stack = "Execute"
+all.Deployment = "Execute"
+all.Procedure = "None"
+all.Repo = "Execute"
+all.Server = "None"
+permissions = []
