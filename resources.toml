@@ -190,7 +190,7 @@ file_paths = ["jellyfin.compose.yaml"]
 
 [[repo]]
 name = "trigger-jellyfin-deploy"
-description = "clone / pull to trigger immich stop, then deploy."
+description = "clone / pull to trigger jellyfin stop, then deploy."
 tags = ["immich", "automation"]
 [repo.config]
 server = "demo-server"
