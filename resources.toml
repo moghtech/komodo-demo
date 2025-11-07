@@ -7,7 +7,6 @@ name = "demo-server"
 description = "Hosts demo.komo.do"
 tags = ["demo", "komodo"]
 [server.config]
-address = "https://periphery:8120"
 region = "South-1"
 enabled = true
 mem_warning = 85.0
