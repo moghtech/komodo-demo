@@ -18,8 +18,7 @@ name = "demo-sync"
 description = "Restores the config back to contents in demo-sync resources.toml"
 tags = ["komodo", "demo"]
 [resource_sync.config]
-git_provider = "forge.mogh.tech"
-repo = "komodo/demo"
+repo = "moghtech/komodo-demo"
 resource_path = "resources.toml"
 delete = true
 
@@ -177,10 +176,9 @@ tags = ["demo", "jellyfin"]
 [stack.config]
 server = "demo-server"
 links = [
-  "https://forge.mogh.tech/komodo/demo/src/branch/main/jellyfin.compose.yaml"
+  "https://github.com/moghtech/komodo-demo/blob/main/jellyfin.compose.yaml"
 ]
-git_provider = "forge.mogh.tech"
-repo = "komodo/demo"
+repo = "moghtech/komodo-demo"
 file_paths = ["jellyfin.compose.yaml"]
 
 ############################
@@ -193,8 +191,7 @@ description = "clone / pull to trigger jellyfin stop, then deploy."
 tags = ["immich", "automation"]
 [repo.config]
 server = "demo-server"
-git_provider = "forge.mogh.tech"
-repo = "komodo/demo"
+repo = "moghtech/komodo-demo"
 on_pull.path = "."
 on_pull.command = """
 API_KEY=[[KOMODO_API_KEY]] API_SECRET=[[KOMODO_API_SECRET]] sh ./trigger-jellyfin-deploy.sh
@@ -246,8 +243,7 @@ deploy = false
 server_id = "demo-server"
 file_paths = ["tempo.compose.yaml"]
 ignore_services = ["init"]
-git_provider = "forge.mogh.tech"
-repo = "komodo/demo"
+repo = "moghtech/komodo-demo"
 
 ####################
 # Vector (Logging) #
@@ -261,8 +257,6 @@ repo = "komodo/demo"
 # [stack.config]
 # server_id = "demo-server"
 # file_paths = ["compose.yaml"]
-# git_provider = "forge.mogh.tech"
-#
 # repo = "mbecker20/demo-vector"
 
 # [[repo]]
